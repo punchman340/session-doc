@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        ## ⚠️ Do NOT paste real session logs
+        ## Do NOT paste real session logs
         Session logs (JSONL) can contain secrets, tokens, file paths, and private code.
         Please provide a **minimal, anonymized snippet** that reproduces the problem instead.
   - type: textarea
