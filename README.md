@@ -2,7 +2,7 @@
 
 Turn coding-agent session logs into searchable HTML docs.
 
-> **Status:** the parser and extractor work; `generate` and the HTML output do not exist yet.
+> **Status:** `generate` works for Claude Code logs. The session-end hook does not exist yet.
 
 ## Why
 
@@ -29,17 +29,44 @@ See [docs/DESIGN.md](docs/DESIGN.md) for the full design.
 
 - [x] Parser
 - [x] Extractor
-- [ ] HTML renderer
-- [ ] Search
+- [x] HTML renderer
+- [x] Search
 - [ ] Hook / plugin
 
 ## Usage
 
-Not available yet. Once `generate` lands it will look like this:
+Not on PyPI yet. From a clone:
 
 ```bash
-uvx session-doc generate
+uv sync
+uv run session-doc generate        # ~/.claude/projects -> ~/session-doc/
 ```
+
+Then open `~/session-doc/index.html` in a browser. Run the same command again to pick up
+new and changed sessions; unchanged ones are skipped.
+
+| Flag | Meaning |
+|---|---|
+| `--source DIR` | Logs to read, searched recursively. Default: `$CLAUDE_CONFIG_DIR/projects` or `~/.claude/projects`. Subagent logs are skipped. |
+| `--out DIR` | Output directory. Default: `~/session-doc/`. |
+| `--no-archive` | Do not keep copies of the logs in `<out>/raw/`. By default they are kept, so sessions stay in the docs after Claude Code deletes old logs. |
+| `--allow-in-git` | Write even if the output directory is inside a git work tree. Without it, session-doc refuses, because logs hold file contents and secrets. |
+
+The pages open from `file://` without a server and make no network requests. Items open
+without JavaScript; the session sidebar and search need it.
+
+### Config
+
+Optional: `~/.config/session-doc/config.json` on Linux and macOS,
+`%APPDATA%\session-doc\config.json` on Windows.
+
+```json
+{"decision_phrases": ["settled on", "let's do"]}
+```
+
+A typed prompt that contains one of these phrases (whole words, any case) is listed as an
+inferred decision. The built-in phrases are `decided` and `go with`. After a change to
+the phrases, the next run renders every session again.
 
 ## Development
 

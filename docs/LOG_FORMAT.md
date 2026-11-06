@@ -1,7 +1,7 @@
 # Claude Code log format
 
 What the parser and extractor rely on, as observed in real logs. The checks ran locally
-on one user's logs (88 to 92 files, Claude Code 2.1.x) and recorded structure and counts
+on one user's logs (85 to 92 files, Claude Code 2.1.x) and recorded structure and counts
 only. Older formats are untested.
 
 ## Files and records
@@ -9,8 +9,11 @@ only. Older formats are untested.
 - One JSON object per line, no wrapper. `sessionId` equals the file name.
 - Every file starts with a `mode` record, so metadata cannot be read from line 1.
 - Subagent logs live in `<session-id>/subagents/agent-*.jsonl` and have
-  `isSidechain: true`. The parser reads them as ordinary files; the scanner must decide
-  whether to list them. The extractor skips sidechain records.
+  `isSidechain: true`. The parser reads them as ordinary files; `generate` skips
+  `subagents/` directories. The extractor skips sidechain records.
+- Some files hold no `user` or `assistant` record at all (1 of 85).
+- Logs disappear: during one day the projects dir went from 91 to 85 top-level files,
+  removed outside session-doc. This is why `generate` archives logs by default.
 
 ## Record types
 

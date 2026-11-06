@@ -1,7 +1,8 @@
 # Design
 
 Status: draft. Section 5 was checked against real Claude Code logs while writing the
-parser and extractor; what the logs contain is in `docs/LOG_FORMAT.md`.
+parser and extractor; what the logs contain is in `docs/LOG_FORMAT.md`. Sections 3, 6,
+and 7 describe the renderer and `generate` as built.
 
 ## 1. Goals and non-goals
 
@@ -30,6 +31,8 @@ Session logs contain file contents, paths, command output, and sometimes secrets
   a CSP meta tag that blocks network access.
 - Everything taken from logs is escaped before it reaches HTML. Raw HTML in logs is never
   passed through; logs can contain arbitrary text fetched from the web.
+- In rendered Markdown, only `http:`, `https:`, and `mailto:` links are live. Images are
+  never loaded; they become plain links.
 - Refuse to write the output directory inside a git work tree unless explicitly forced.
 - The archived copies of source logs live only under the output directory.
 
@@ -37,20 +40,34 @@ Session logs contain file contents, paths, command output, and sometimes secrets
 
 Three panes plus a search box:
 
-1. **Sidebar**: projects, then sessions (newest first). A session is labelled with its
-   AI-generated title if the log has one, else its first typed prompt (truncated), and
-   its date.
+1. **Sidebar**: a link to all projects, the current project, then its sessions (newest
+   first). A session is labelled with its AI-generated title if the log has one, else
+   its first typed prompt (truncated), and its date. The session list is built by
+   `app.js` from the project's data file (section 6), so a new session never requires
+   rebuilding older pages. Without JS the sidebar shows a link to the project index,
+   which lists every session. The top-level index lists all projects.
 2. **Item list**: the selected session's items in chronological order. Each item has a kind
    badge: prompt, deliverable, decision, status. Items found by weak signals are marked
    "inferred".
-3. **Reader**: the selected item rendered as Markdown.
+3. **Reader**: the selected item rendered as Markdown. With no item selected it shows a
+   summary of the session.
+
+Items are selected with `#item-N` links and the CSS `:target` selector, so reading works
+without JS. JS adds the sidebar session list, search, and a highlight on the selected
+item in the list.
+
+The search box searches the current project (section 7). Results replace the item list
+and link to the item on its session page. Without JS the search box is hidden.
 
 Filtering by kind comes later. Chronological order is the only ordering for the MVP.
 
 ## 4. Data model
 
 - **Project**: derived from the session's working directory (the first `cwd` in the log).
-- **Session**: one log file. Id, start and end time, git branch if present.
+  Its slug is the directory name made filesystem-safe plus 8 hex digits of a hash of the
+  full path. Without a `cwd`, the name of the directory holding the log stands in.
+- **Session**: one log file. Id, start and end time, git branch if present. Its slug is
+  the log file name; a clash within a project gets a hash suffix.
 - **Record**: one parsed line of a log. Typed; unknown fields ignored.
 - **Item**: what the UI shows. Kind (prompt | deliverable | decision | status), timestamp,
   title, Markdown body, confidence (explicit | inferred), and the ids of its source records.
@@ -100,43 +117,62 @@ Default output directory: `~/session-doc/` (override with `--out`).
 ```
 ~/session-doc/
   index.html                 all projects
-  assets/                    shared JS and CSS, vendored search library
+  assets/                    style.css, app.js, vendored MiniSearch and its license
   projects/<project>/
     index.html               sessions for this project
-    search-index.js          search index for this project only
+    search-index.js          session list (sidebar) and search docs for this project
     sessions/<session>.html  one page per session
   raw/<project>/<session>.jsonl   archived copy of the source log
-  state.json                 content hashes for incremental runs
+  state.json                 content hashes and session metadata for incremental runs
 ```
 
-`session-doc generate` is idempotent and incremental:
+`session-doc generate [--source DIR] [--out DIR] [--no-archive] [--allow-in-git]` is
+idempotent and incremental:
 
-1. Scan the source directory (default: Claude Code's projects directory).
-2. Skip sessions whose content hash is unchanged.
-3. Archive a copy of each new or changed source log (can be disabled).
-4. Parse, extract, and render the changed sessions.
-5. Rebuild the affected project index and search index.
+1. Refuse to run if the output dir is inside a git work tree (a `.git` dir or file in it
+   or any parent) unless `--allow-in-git` is given; if it is not empty and has no
+   `state.json`, so session-doc did not create it; or if it and the source dir contain
+   each other. Read the optional config (section 5); invalid JSON is an error.
+2. Scan the source directory recursively for `*.jsonl` files. The default is Claude
+   Code's projects directory, `$CLAUDE_CONFIG_DIR/projects` or `~/.claude/projects`.
+   Directories named `subagents` are skipped.
+3. Skip sessions whose sha256 is unchanged.
+4. Copy each new or changed log to `raw/` (unless `--no-archive`) and parse the copy, so
+   the page matches the archived bytes and the session stays after the agent prunes
+   its logs.
+5. Extract and render the changed sessions. A log with no user or assistant records gets
+   no page.
+6. Rewrite the affected projects' `index.html` and `search-index.js`, and the top-level
+   index. Search docs of sessions not rendered in this run are carried over from the
+   existing `search-index.js`. If that file is missing or unreadable, those sessions are
+   parsed again from `raw/` or the source.
+7. Write `state.json` last.
+
+Pages of sessions whose log disappeared are never deleted and stay listed. Every file is
+written atomically (temp file, then rename), and files whose content is unchanged are not
+rewritten, so a run without changes writes nothing. If the session-doc version, the
+output format, or the decision phrases change, every session is rendered again, from
+`raw/` when its log is gone.
 
 Today it is run by hand. A later Claude Code hook (session end) calls the same command.
 
 ## 7. Search
 
 Search runs in the browser, so the pages must also work from `file://`, where browsers
-block fetching local files. Search indexes are therefore plain `.js` files loaded with
-`<script>` tags, split per project so only one project's index is loaded at a time.
+block fetching local files. Each project's `search-index.js` is therefore a plain script
+(`window.sessionDocData = {...}`) loaded with a `<script>` tag. It holds the project's
+session list and one document per item (kind, title, Markdown text, anchor). Only the
+current project's file is loaded.
 
-The library (MiniSearch, FlexSearch, or similar) is vendored as a single file and chosen
-by benchmarking on real logs. If logs outgrow this approach, a local server mode with
-Pagefind is the fallback.
+The library is MiniSearch 7.2.0, vendored minified with its MIT license in `assets/`.
+The index is built in the browser the first time the search box gets focus. Queries use
+prefix matching on title and text, require every term, and boost title matches. On the
+real logs (11 projects, 345 items) the largest project data file is 0.8 MB. If logs
+outgrow this approach, a local server mode with Pagefind is the fallback.
 
 ## 8. Open questions
 
-- Markdown rendering: at generation time (needs a Python dependency) or in the browser
-  (needs a vendored library plus sanitization)? Either way it must satisfy the escaping
-  rule in section 2, and most Markdown libraries pass inline HTML through by default.
-- Name of the flag that forces writing the output inside a git work tree. A home
-  directory tracked as a dotfiles repo will trigger the refusal for the default output dir.
-- Exact CSP policy that still allows inline scripts under `file://`.
-- Project slug scheme for working directories that contain unusual characters.
+- Search across projects. With one index per project, the top-level index has no
+  search box.
 - More status signals. `TodoWrite`, `TaskCreate`, and `TaskUpdate` were not observed in
   the sample logs; background tasks show up as `task_status` attachments instead.

@@ -3,6 +3,71 @@
 Newest first. Add a new entry instead of rewriting an old one. Format: date, decision,
 why. Observed log structure lives in `docs/LOG_FORMAT.md`.
 
+## 2026-11-07 (renderer)
+
+- **Runtime dependencies: markdown-it-py and Jinja2, nothing else.** Approved by the
+  maintainer. MarkupSafe and mdurl come with them.
+- **Markdown is rendered at generation time with markdown-it-py, preset `js-default`.**
+  That preset has raw HTML off; it must never be turned on. Links stay live only for
+  `http:`, `https:`, and `mailto:`; relative paths, fragments, `javascript:`, `data:`, and
+  `file:` stay as plain text. Images are never loaded and render as a link to the image.
+  Table alignment becomes a class, because the CSP blocks `style` attributes. Items other
+  than deliverables keep single line breaks, since people type them line by line and
+  commit messages are wrapped on purpose.
+- **Jinja2 with `autoescape=True`.** Rendered Markdown is the only value marked safe:
+  one `|safe` in `session.html`, checked by a test.
+- **The sidebar session list lives in the per-project `search-index.js` and is built by
+  JS.** Without JS the sidebar shows a link to the project index, which lists every
+  session. Only that project's JS file and index page change when a session is added,
+  so no older session page is rebuilt. The maintainer chose this over a `nav.html` per
+  project embedded in an iframe and over rewriting the sidebar block of every page on
+  each run: search already needs JS, the sidebar can later be filtered by search from
+  the same data, and it avoids iframe sizing quirks and a `frame-src` exception in the
+  CSP.
+- **CSP: `default-src 'none'; script-src 'self' file:; style-src 'self' file:;
+  base-uri 'none'; form-action 'none'`.** All scripts and styles are external files, so
+  no `'unsafe-inline'` is needed. In headless Chrome 156 from `file://`, `'self'` alone
+  and `file:` alone each allowed the local scripts and styles, and `default-src 'none'`
+  with neither blocked them, so the policy is enforced. Both sources are kept: browsers
+  have differed on whether `'self'` matches other `file://` URLs (Firefox gives each
+  file its own origin), and `'self'` keeps the pages working over http. Firefox is not
+  tested yet. Pages also set `referrer` to `no-referrer` and turn off DNS prefetch.
+- **Search: MiniSearch 7.2.0, vendored in `src/session_doc/assets/` with its MIT
+  license.** The npm package ships no minified build, so `dist/umd/index.js` was
+  minified with `npx terser@5.51.2 index.js --compress --mangle --comments false` and a
+  one-line license header was added. Prefix search on title and text, every term
+  required, titles boosted. One data file per project; the index is built in the
+  browser the first time the search box gets focus. Full item text is indexed: on the
+  real logs the largest project file is 0.8 MB.
+- **Force flag: `--allow-in-git`.** The check looks for a `.git` directory or file in
+  the output dir and every parent, without running git. On the maintainer's machine the
+  home directory is a git work tree, so the default `~/session-doc` needs the flag there.
+- **Search docs are carried over from the existing `search-index.js`.** When a session
+  changes, the docs of the project's other sessions are read back from the file
+  session-doc wrote last time instead of from a separate cache, so the output layout
+  gains no files. If the file is missing or unreadable, those sessions are parsed
+  again from `raw/` or the source.
+- **`state.json` is keyed by the absolute path of the source log** and holds its sha256
+  plus the metadata the index pages need (title, times, branch, item counts). It also
+  holds a fingerprint (output format, session-doc version, decision phrases); when that
+  changes, every session is rendered again, from `raw/` if its log is gone.
+- **Project slug: directory name plus 8 hex digits of a sha256 of the full path.**
+  Readable, filesystem-safe, and two projects with the same directory name stay apart.
+  Windows drive paths are compared case-insensitively. A log without `cwd` uses the
+  name of the directory that holds it. The session slug is the log file name, with a
+  hash suffix on a clash.
+- **Refuse a non-empty output dir without `state.json`.** This stops `--out ~` or a
+  typo from overwriting someone's `index.html`. `state.json` is written first, so an
+  interrupted first run can be resumed. Source and output dirs that contain each other
+  are refused too.
+- **Logs without user or assistant records get no page.** 1 of 85 real logs had none;
+  it would only add an empty entry to the sidebar.
+- **Subagent logs are skipped by directory name (`subagents/`).** The default source
+  honors `CLAUDE_CONFIG_DIR`, as Claude Code does.
+- **Atomic writes; only archives and `state.json` are fsynced.** Pages can be rendered
+  again, archived logs may be the last copy. Unchanged files are not rewritten.
+- **Times are shown in the local time zone of the machine that runs `generate`.**
+
 ## 2026-11-07 (review)
 
 - **Config file lives outside the output dir.** `~/.config/session-doc/config.json` on

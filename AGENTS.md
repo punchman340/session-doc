@@ -18,7 +18,11 @@ uv run pytest                                    # tests
 uv run ruff check . && uv run ruff format .      # lint + format
 uv run ruff format --check .                     # format check, as CI runs it
 uv run session-doc --help                        # run the CLI
+uv run session-doc generate --source tests/fixtures --out DIR   # render the fixtures
 ```
+
+Pick a `DIR` outside the repo. `generate` refuses an output dir inside a git work tree
+unless `--allow-in-git` is passed.
 
 ## Docs
 
@@ -32,12 +36,15 @@ uv run session-doc --help                        # run the CLI
 
 Keep three layers separate:
 
-1. Core (parse, extract, render) has no CLI or plugin imports.
+1. Core (`parser`, `extractor`, `render`, `generate`, `config`) has no CLI or plugin
+   imports.
 2. `cli.py` only parses arguments and calls the core.
 3. The Claude Code plugin (later) only shells out to the CLI.
 
-Pipeline: JSONL -> parser (typed records) -> extractor (items) -> renderer (static HTML
-and search index; not written yet).
+Pipeline: JSONL -> parser (typed records) -> extractor (items) -> renderer (pages and
+per-project data file). `generate.py` scans, archives, tracks state, and writes files.
+Templates live in `src/session_doc/templates/`, CSS and JS in `src/session_doc/assets/`.
+`minisearch.min.js` is vendored: do not edit it; re-vendor as `docs/DECISIONS.md` says.
 
 ## Conventions
 
@@ -46,14 +53,16 @@ and search index; not written yet).
 - Output is static HTML with no external assets; everything lives under the output dir
   and must open from `file://` with no server.
 - Only read the input paths given and write inside the output dir. Never modify source logs.
-- Every new parser or extractor rule gets a fixture and a test.
+- Every new parser, extractor, or renderer rule gets a fixture and a test.
 
 ## Privacy and security
 
 Session logs contain file contents, paths, command output, and sometimes secrets.
 
 - Make no network calls: no telemetry, no update checks.
-- Escape all log content before it reaches HTML. Never pass raw HTML through.
+- Escape all log content before it reaches HTML. Never pass raw HTML through. Jinja2
+  autoescape stays on, markdown-it `html` stays off, and rendered Markdown is the only
+  value marked safe. `app.js` sets log text with `textContent` only.
 - Add no external requests to generated HTML (no CDN scripts, fonts, or images); keep the CSP meta tag.
 - Refuse an output dir inside a git work tree unless explicitly forced.
 - Keep archived source logs only under the output dir.
