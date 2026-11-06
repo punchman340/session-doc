@@ -7,6 +7,8 @@ Claude Code logs come first; other agents are added later as extra parsers.
 
 All repository content is English: code, comments, docs, commit messages, issues, PRs.
 Conversation with the maintainer may be in Korean.
+No non-English text anywhere in the repo, including patterns, fixtures, and tests.
+Language-specific phrases belong in user config.
 
 ## Commands
 

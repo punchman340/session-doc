@@ -63,8 +63,26 @@ Pipeline: log file -> records -> items -> pages and search index.
 |---|---|---|
 | Prompt | `user` records with `promptSource == "typed"` (not tool results, not system-injected text) | none |
 | Deliverable | Plan-mode exit (`plan_mode_exit` attachment; the plan is in `planFilePath`, `ExitPlanMode` was not observed), Markdown files created with `Write` (`file_path`) | Long assistant answers, answers with several headings, tables, or checklists |
-| Decision | Answers to `AskUserQuestion` (`toolUseResult.answers`), plan approval | Phrases such as "let's go with", "decided", Korean equivalents (e.g. "~로 하자", "결정") |
+| Decision | Answers to `AskUserQuestion` (`toolUseResult.answers`) | Typed prompts containing a decision phrase. English defaults ("let's go with", "decided", "go with"); more phrases come from user config |
 | Status | `git commit` in Bash; *unverified:* `TodoWrite`, `TaskCreate`, `TaskUpdate` (not observed in sample logs) | none |
+
+Details of the extractor (`src/session_doc/extractor.py`):
+
+- Records with `isSidechain: true` are skipped.
+- A typed prompt that matches a decision phrase becomes a *decision* item instead of a
+  *prompt* item. Text inside `<pasted_content>` is not matched, but stays in the body.
+- Decision phrases are user-configurable. The repo ships English defaults only; the
+  extractor takes extra phrases as a parameter. The CLI will later read them from an
+  optional file outside the repo, `~/session-doc/config.json`
+  (`{"decision_phrases": [...]}`), so language-specific phrases never enter the repo.
+- `Write` is accepted with `file_path` or `path` for the target and `content` or
+  `file_text` for the body. Other tools, including MCP tools, never produce deliverables.
+- Failed tool calls (error results) produce no deliverable or status item.
+- Plan-mode exit: the plan body is rebuilt from the log (last `Write` to `planFilePath`
+  before the exit, with later `Edit` calls replayed). If the log holds no such write, the
+  item says the plan body is not in the log. Files outside the log are never read.
+- Status from `git commit`: the title is the first line of the commit message when it can
+  be parsed (`-m`, `--message`, heredoc); otherwise it is `git commit`.
 
 Thresholds (e.g. minimum length of a "long answer") are tuned against real logs and
 recorded in `docs/DECISIONS.md`. Every rule has a fixture and a test.

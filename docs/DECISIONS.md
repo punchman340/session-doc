@@ -4,6 +4,29 @@ Short, append-only log. Newest first. Format: date, decision, why.
 
 ## 2026-11-07
 
+- **Extractor rules and thresholds (checked on the same 88-file sample, counts only).**
+  - Long answer: assistant text merged per `message.id`. Of 1423 such messages the median is
+    89 characters, p75 is 263, p90 is 2329. Chosen threshold: **1500 characters** (about 15%
+    of messages). Messages with 2+ headings, a table, or a checklist qualify from **300
+    characters**; in the sample every structured message was already above 500, so the floor
+    only guards against tiny answers. Headings inside code fences do not count.
+  - Plan body: the sample has one `plan_mode_exit` and **no** `Write`, `Edit`, or any other
+    record in the log writes its plan file. So the plan body is usually not recoverable from
+    the log; the item then says so instead of reading the file. When a `Write` does exist,
+    the body is rebuilt from it, with later `Edit` calls replayed (using `originalFile` from
+    the edit result as a base when no `Write` was seen). The `Write` to a plan file is not
+    emitted as a second deliverable.
+  - `Write` input keys in the sample: `file_path` 450, `content` 453, `path` 4, `file_text` 1.
+    All four are accepted.
+  - `git commit` appears 3 times in the sample, always as `git add ... && git commit -m
+    "$(cat <<'EOF' ... EOF)"`. The extractor also handles `-m 'x'`, `--message`, and several
+    `-m` flags; unparseable commands (`--amend --no-edit`) still yield an item titled
+    `git commit`. Only `Bash` calls are inspected.
+  - Decision phrases come from user config, not the repo. The repo ships English defaults
+    ("let's go with", "decided", "go with"); the extractor takes extra phrases as a
+    parameter, and the CLI will later load them from `~/session-doc/config.json`
+    (`"decision_phrases": [...]`). This keeps the repository English-only.
+
 - **Parser checked against real Claude Code logs (88 files, version 2.1.x, structure only).**
   - Top-level record types: `user`, `assistant`, `system`, `attachment` (modeled);
     `ai-title`, `last-prompt` (modeled, for titles); `mode`, `permission-mode`,
