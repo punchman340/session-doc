@@ -13,13 +13,25 @@ built-in search usually only matches titles.
 session-doc reads the session logs your agent already writes to disk and builds a static,
 searchable HTML site from them, organized by project instead of by scroll position.
 
-## Planned
+## What it does
 
-- Parse Claude Code session logs (`~/.claude/projects/**/*.jsonl`).
-- Pull out prompts, decisions, deliverables (plans, manuals, long answers), and status.
-- Render a per-project index and per-session pages with full-text search.
-- Output is plain static HTML: open it from disk or host it anywhere.
+- Reads Claude Code session logs (`~/.claude/projects/**/*.jsonl`).
+- Extracts prompts, decisions, deliverables (plans, manuals, long answers), and status with
+  plain rules, no LLM.
+- Writes static HTML with full-text search to `~/session-doc/`. It opens from disk and
+  makes no network requests.
+- Runs incrementally, so re-running only processes new or changed sessions.
 - Other coding agents later, one parser at a time.
+
+See [docs/DESIGN.md](docs/DESIGN.md) for the full design.
+
+### Status
+
+- [ ] Parser
+- [ ] Extractor
+- [ ] HTML renderer
+- [ ] Search
+- [ ] Hook / plugin
 
 ## Usage
 

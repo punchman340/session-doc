@@ -17,6 +17,10 @@ uv run ruff check . && uv run ruff format .      # lint + format
 uv run session-doc --help                        # run the CLI
 ```
 
+## Spec
+
+`docs/DESIGN.md` is the spec. Read it before changing behavior; update it when behavior changes.
+
 ## Layout
 
 - `src/session_doc/` the package: parser, extractor, renderer, and a thin `cli.py`
@@ -41,6 +45,16 @@ deliverables, status) -> renderer (static HTML + search index).
 - Output is static HTML with inlined assets and must open from `file://` with no server.
 - Only read the input paths given and write inside the output dir. Never modify source logs.
 - Every new parser or extractor rule gets a fixture and a test.
+
+## Privacy and security
+
+Session logs contain file contents, paths, command output, and sometimes secrets.
+
+- Make no network calls: no telemetry, no update checks.
+- Escape all log content before it reaches HTML. Never pass raw HTML through.
+- Add no external requests to generated HTML (no CDN scripts, fonts, or images); keep the CSP meta tag.
+- Refuse an output dir inside a git work tree unless explicitly forced.
+- Keep archived source logs only under the output dir.
 
 ## Boundaries
 
