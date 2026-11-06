@@ -1,0 +1,8 @@
+{% macro badges(kind, inferred) -%}
+<span class="badge kind-{{ kind }}">{{ kind }}</span>
+{%- if inferred %}<span class="inferred" title="Found by a weak signal">inferred</span>{% endif %}
+{%- endmacro %}
+
+{% macro counts(values) -%}
+{% for kind in kinds if values.get(kind) %}<span class="count kind-{{ kind }}" title="{{ kind }}">{{ values[kind] }} {{ kind }}</span>{% endfor %}
+{%- endmacro %}

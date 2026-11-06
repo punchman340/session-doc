@@ -8,10 +8,13 @@ version = "0.0.1"
 description = "Turn coding-agent session logs into searchable HTML docs."
 readme = "README.md"
 license = "MIT"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "src/session_doc/assets/minisearch.LICENSE.txt"]
 authors = [{ name = "punchman340" }]
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "jinja2>=3.1.6",
+    "markdown-it-py>=4.2.0",
+]
 keywords = ["claude-code", "coding-agent", "session-log", "jsonl", "static-site", "search"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",

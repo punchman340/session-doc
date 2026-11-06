@@ -1,0 +1,533 @@
+/* session-doc viewer styles. Plain CSS, system fonts, no external resources. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --muted: #59636e;
+  --line: #d1d9e0;
+  --pane: #f6f8fa;
+  --hover: #eaeef2;
+  --select: #ddf4ff;
+  --accent: #0969da;
+  --prompt: #0969da;
+  --deliverable: #1a7f37;
+  --decision: #8250df;
+  --status: #9a6700;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --fg: #e6edf3;
+    --muted: #9198a1;
+    --line: #3d444d;
+    --pane: #151b23;
+    --hover: #212830;
+    --select: #1b3354;
+    --accent: #4493f8;
+    --prompt: #4493f8;
+    --deliverable: #3fb950;
+    --decision: #ab7df8;
+    --status: #d29922;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+code,
+pre,
+kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.875em;
+}
+
+h1 {
+  font-size: 1.15rem;
+  line-height: 1.3;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.meta,
+.path,
+time {
+  color: var(--muted);
+}
+
+.meta {
+  font-size: 0.85rem;
+  margin: 0.25rem 0 0;
+}
+
+.path {
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.empty,
+.hint {
+  color: var(--muted);
+  padding: 0 1rem;
+}
+
+/* ------------------------------------------------------------------ layout */
+
+.layout {
+  display: grid;
+  grid-template-columns: 16rem 24rem minmax(0, 1fr);
+  height: 100vh;
+}
+
+.project-page .layout {
+  grid-template-columns: 16rem minmax(0, 1fr);
+}
+
+.sidebar,
+.list-pane,
+.reader,
+.layout .main {
+  min-height: 0;
+  overflow: auto;
+}
+
+.sidebar {
+  background: var(--pane);
+  border-right: 1px solid var(--line);
+  padding: 0.75rem 0;
+}
+
+.list-pane {
+  border-right: 1px solid var(--line);
+}
+
+.pane-head {
+  border-bottom: 1px solid var(--line);
+  padding: 0.75rem 1rem;
+}
+
+.index-page .main {
+  margin: 0 auto;
+  max-width: 72rem;
+  padding: 1rem;
+}
+
+.index-page .pane-head {
+  border-bottom: 0;
+  padding: 0.5rem 0 1rem;
+}
+
+/* ------------------------------------------------------------------ sidebar */
+
+.sidebar .home {
+  font-size: 0.85rem;
+  margin: 0 1rem 0.5rem;
+}
+
+.project-name {
+  font-size: 1rem;
+  margin: 0 1rem 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.project-name a {
+  color: var(--fg);
+}
+
+.session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.session-list a {
+  color: var(--fg);
+  display: block;
+  padding: 0.35rem 1rem;
+}
+
+.session-list a:hover {
+  background: var(--hover);
+  text-decoration: none;
+}
+
+.session-list a[aria-current="page"] {
+  background: var(--select);
+  font-weight: 600;
+}
+
+.session-list .fallback a {
+  color: var(--accent);
+}
+
+.session-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-date {
+  color: var(--muted);
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+/* ------------------------------------------------------------------ items and results */
+
+.search {
+  border-bottom: 1px solid var(--line);
+  padding: 0.5rem 1rem;
+}
+
+.search input {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--fg);
+  font: inherit;
+  padding: 0.35rem 0.6rem;
+  width: 100%;
+}
+
+.result-count {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0;
+  padding: 0.5rem 1rem;
+}
+
+.items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.items a {
+  border-bottom: 1px solid var(--line);
+  color: var(--fg);
+  display: block;
+  padding: 0.5rem 1rem;
+}
+
+.items a:hover {
+  background: var(--hover);
+  text-decoration: none;
+}
+
+.items a[aria-current] {
+  background: var(--select);
+}
+
+.item-meta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.item-meta time {
+  margin-left: auto;
+}
+
+.item-title {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.result-session,
+.snippet {
+  color: var(--muted);
+  display: block;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.badge,
+.inferred,
+.count {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  padding: 0 0.45rem;
+  white-space: nowrap;
+}
+
+.badge {
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.inferred {
+  border-style: dashed;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.count {
+  border-color: var(--line);
+  display: inline-block;
+  margin: 0 0.25rem 0.15rem 0;
+}
+
+.kind-prompt {
+  color: var(--prompt);
+}
+
+.kind-deliverable {
+  color: var(--deliverable);
+}
+
+.kind-decision {
+  color: var(--decision);
+}
+
+.kind-status {
+  color: var(--status);
+}
+
+/* ------------------------------------------------------------------ reader */
+
+.reader {
+  padding: 1rem 2rem 3rem;
+}
+
+/* Without JS, the item named in the URL fragment is shown; with none, the summary is. */
+.reader .item {
+  display: none;
+  max-width: 54rem;
+}
+
+.reader .item:target {
+  display: block;
+}
+
+.reader .item:target ~ .summary {
+  display: none;
+}
+
+.reader .item header h2,
+.summary h2 {
+  font-size: 1.3rem;
+  line-height: 1.3;
+  margin: 0.4rem 0 1rem;
+  overflow-wrap: anywhere;
+}
+
+.summary dl {
+  display: grid;
+  gap: 0.35rem 1rem;
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.summary dt {
+  color: var(--muted);
+}
+
+.summary dd {
+  margin: 0;
+}
+
+.summary .hint {
+  padding: 0;
+}
+
+/* ------------------------------------------------------------------ markdown */
+
+.markdown {
+  overflow-wrap: anywhere;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  line-height: 1.3;
+  margin: 1.4em 0 0.5em;
+}
+
+.markdown h1 {
+  font-size: 1.4rem;
+}
+
+.markdown h2 {
+  font-size: 1.2rem;
+}
+
+.markdown h3 {
+  font-size: 1.05rem;
+}
+
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  font-size: 1rem;
+}
+
+.markdown code {
+  background: var(--pane);
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+}
+
+.markdown pre {
+  background: var(--pane);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: auto;
+  padding: 0.75rem 1rem;
+}
+
+.markdown pre code {
+  background: none;
+  overflow-wrap: normal;
+  padding: 0;
+}
+
+.markdown blockquote {
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+  margin: 0;
+  padding: 0 1rem;
+}
+
+.markdown hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.markdown table,
+.table {
+  border-collapse: collapse;
+  display: block;
+  max-width: 100%;
+  overflow: auto;
+}
+
+.markdown th,
+.markdown td,
+.table th,
+.table td {
+  border: 1px solid var(--line);
+  padding: 0.3rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown th,
+.table th {
+  background: var(--pane);
+}
+
+.markdown .align-left {
+  text-align: left;
+}
+
+.markdown .align-center {
+  text-align: center;
+}
+
+.markdown .align-right {
+  text-align: right;
+}
+
+.table {
+  display: table;
+  width: 100%;
+}
+
+.table .path {
+  display: block;
+}
+
+.layout .main .table {
+  margin: 1rem;
+  width: calc(100% - 2rem);
+}
+
+.num {
+  text-align: right;
+  white-space: nowrap;
+  width: 1%;
+}
+
+.nowrap {
+  white-space: nowrap;
+  width: 1%;
+}
+
+.branch {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.8rem;
+  margin-left: 0.4rem;
+  padding: 0 0.3rem;
+}
+
+/* ------------------------------------------------------------------ narrow screens */
+
+@media (max-width: 900px) {
+  .layout,
+  .project-page .layout {
+    display: block;
+    height: auto;
+  }
+
+  .sidebar,
+  .list-pane,
+  .reader,
+  .layout .main {
+    overflow: visible;
+  }
+
+  .sidebar {
+    border-bottom: 1px solid var(--line);
+    border-right: 0;
+    max-height: 40vh;
+    overflow: auto;
+  }
+
+  .list-pane {
+    border-bottom: 1px solid var(--line);
+    border-right: 0;
+  }
+
+  .reader {
+    padding: 1rem;
+  }
+}

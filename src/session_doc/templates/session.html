@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badges, counts %}
+{% block title %}{{ session.title }} - {{ project.name }}{% endblock %}
+{% block scripts %}{% include "_scripts.html" %}{% endblock %}
+{% block body %}
+<body class="session-page" data-session="{{ session.slug }}" data-sessions="">
+<div class="layout">
+{% include "_sidebar.html" %}
+<section class="list-pane" aria-label="Items">
+  <header class="pane-head">
+    <h1>{{ session.title }}</h1>
+    <p class="meta"><time datetime="{{ session.start|iso }}">{{ session.start|when }}</time>{% if session.branch %} <span class="branch">{{ session.branch }}</span>{% endif %}</p>
+  </header>
+  {% include "_search.html" %}
+  <div id="content">
+  {% if items %}
+    <ol class="items">
+    {% for item in items %}
+      <li><a href="#{{ item.anchor }}"><span class="item-meta">{{ badges(item.kind, item.inferred) }}<time datetime="{{ item.iso }}">{{ item.clock }}</time></span><span class="item-title">{{ item.title }}</span></a></li>
+    {% endfor %}
+    </ol>
+  {% else %}
+    <p class="empty">No items were found in this session.</p>
+  {% endif %}
+  </div>
+</section>
+<main class="reader">
+{% for item in items %}
+  <article class="item" id="{{ item.anchor }}">
+    <header>
+      <p class="item-meta">{{ badges(item.kind, item.inferred) }}<time datetime="{{ item.iso }}">{{ item.when }}</time></p>
+      <h2>{{ item.title }}</h2>
+    </header>
+    <div class="markdown">{{ item.html|safe }}</div>
+  </article>
+{% endfor %}
+  <section class="summary">
+    <h2>{{ session.title }}</h2>
+    <dl>
+      <dt>Project</dt><dd>{{ project.name }} <span class="path">{{ project.cwd }}</span></dd>
+      <dt>Started</dt><dd><time datetime="{{ session.start|iso }}">{{ session.start|when }}</time></dd>
+      <dt>Last activity</dt><dd><time datetime="{{ session.end|iso }}">{{ session.end|when }}</time></dd>
+      {% if session.branch %}
+      <dt>Branch</dt><dd>{{ session.branch }}</dd>
+      {% endif %}
+      <dt>Items</dt><dd>{{ counts(session.counts) or "none" }}</dd>
+      {% if session.skipped_lines %}
+      <dt>Unreadable lines</dt><dd>{{ session.skipped_lines }} skipped</dd>
+      {% endif %}
+    </dl>
+    {% if items %}
+    <p class="hint">Select an item to read it.</p>
+    {% endif %}
+  </section>
+</main>
+</div>
+</body>
+{% endblock %}

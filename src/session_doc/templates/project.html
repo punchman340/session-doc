@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "_macros.html" import counts %}
+{% block title %}{{ project.name }} - session-doc{% endblock %}
+{% block scripts %}{% include "_scripts.html" %}{% endblock %}
+{% block body %}
+<body class="project-page" data-session="" data-sessions="sessions/">
+<div class="layout">
+{% include "_sidebar.html" %}
+<main class="main">
+  <header class="pane-head">
+    <h1>{{ project.name }}</h1>
+    <p class="meta path">{{ project.cwd }}</p>
+  </header>
+  {% include "_search.html" %}
+  <div id="content">
+  {% if sessions %}
+    <table class="table">
+      <thead><tr><th>Started</th><th>Session</th><th>Branch</th><th>Items</th></tr></thead>
+      <tbody>
+      {% for s in sessions %}
+        <tr>
+          <td class="nowrap"><time datetime="{{ s.start|iso }}">{{ s.start|when }}</time></td>
+          <td><a href="sessions/{{ s.slug }}.html">{{ s.title }}</a></td>
+          <td>{{ s.branch or "" }}</td>
+          <td>{{ counts(s.counts) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty">No sessions.</p>
+  {% endif %}
+  </div>
+</main>
+</div>
+</body>
+{% endblock %}

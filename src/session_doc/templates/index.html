@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}session-doc{% endblock %}
+{% block body %}
+<body class="index-page">
+<main class="main">
+  <header class="pane-head">
+    <h1>session-doc</h1>
+    <p class="meta">{{ projects|length }} {{ "project" if projects|length == 1 else "projects" }}</p>
+  </header>
+  {% if projects %}
+    <table class="table">
+      <thead><tr><th>Project</th><th>Sessions</th><th>Items</th><th>Last activity</th></tr></thead>
+      <tbody>
+      {% for p in projects %}
+        <tr>
+          <td><a href="projects/{{ p.slug }}/index.html">{{ p.name }}</a> <span class="path">{{ p.cwd }}</span></td>
+          <td class="num">{{ p.sessions }}</td>
+          <td class="num">{{ p.items }}</td>
+          <td class="nowrap"><time datetime="{{ p.last|iso }}">{{ p.last|when }}</time></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="empty">No sessions found yet.</p>
+  {% endif %}
+</main>
+</body>
+{% endblock %}
