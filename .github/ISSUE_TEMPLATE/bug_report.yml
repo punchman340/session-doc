@@ -1,0 +1,48 @@
+name: Bug report
+description: Report something that does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ⚠️ Do NOT paste real session logs
+        Session logs (JSONL) can contain secrets, tokens, file paths, and private code.
+        Please provide a **minimal, anonymized snippet** that reproduces the problem instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem. Include error messages if any (anonymized).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Commands you ran and a minimal anonymized input snippet.
+      placeholder: |
+        1. Run `session-doc ...`
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS and Python version
+      placeholder: "Windows 11, Python 3.12"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: session-doc version
+      description: Output of `uv run session-doc --version`
+    validations:
+      required: true
