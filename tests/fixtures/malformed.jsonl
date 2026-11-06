@@ -1,0 +1,10 @@
+this is not json
+
+[1, 2, 3]
+{"no_type": true}
+{"type": 5}
+{"type": "user", "message": "not-a-dict", "timestamp": "garbage"}
+{"type": "assistant", "message": {"content": "not-a-list"}}
+{"type": "user", "message": {"content": [null, 3, {"type": "tool_result"}]}}
+{"isSidechain": false, "userType": "external", "entrypoint": "cli", "cwd": "/work/demo-app", "sessionId": "00000000-0000-4000-8000-000000000001", "version": "2.1.0", "gitBranch": "feature/demo", "type": "user", "uuid": "u-ok", "timestamp": "2026-01-02T00:00:00.000Z", "promptId": "p-9", "message": {"role": "user", "content": "Still parsed."}}
+{"type": "user", "truncated
