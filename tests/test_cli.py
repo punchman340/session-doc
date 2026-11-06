@@ -1,3 +1,6 @@
+import subprocess
+import sys
+
 import pytest
 
 from session_doc import __version__
@@ -19,3 +22,13 @@ def test_no_command_prints_help(capsys):
 def test_generate_is_a_stub(capsys):
     assert main(["generate"]) == 1
     assert "not implemented" in capsys.readouterr().err
+
+
+def test_python_dash_m_entry_point():
+    out = subprocess.run(
+        [sys.executable, "-m", "session_doc", "--version"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert __version__ in out.stdout

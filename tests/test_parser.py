@@ -133,6 +133,63 @@ def test_line_numbers_are_one_based_and_count_blank_lines():
     assert [r.line_no for r in s.records] == sorted(r.line_no for r in s.records)
 
 
+def test_timestamps_without_offset_are_utc(make_session):
+    s = make_session(
+        {"type": "system", "timestamp": "2026-01-01T00:00:00Z"},
+        {"type": "system", "timestamp": "2026-01-01T00:00:01"},
+    )
+    assert all(r.timestamp.tzinfo == timezone.utc for r in s.records)
+    assert s.end_time > s.start_time  # aware and formerly naive values compare
+
+
+def _user(text: str, **extra) -> dict:
+    return {"type": "user", "message": {"content": text}, **extra}
+
+
+def test_echoed_commands_are_not_typed_prompts(make_session):
+    s = make_session(
+        _user("<command-name>/model</command-name>", promptId="p-1"),
+        _user("<bash-input>ls</bash-input>", promptId="p-2"),
+        _user("<command-name>/clear</command-name>", promptSource="typed"),
+        _user("From a task.", promptSource="typed", origin={"kind": "task-notification"}),
+        _user("Real prompt.", promptSource="typed", origin={"kind": "human"}),
+    )
+    assert [u.text for u in users(s) if u.is_typed_prompt] == ["Real prompt."]
+
+
+def test_large_payloads_are_reduced(make_session):
+    s = make_session(
+        {
+            "type": "user",
+            "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": "x"}]},
+            "toolUseResult": {"file": {"content": "big"}, "stdout": "big", "answers": {"q": "a"}},
+        },
+        {"type": "attachment", "attachment": {"type": "file", "path": "/p", "content": {"x": 1}}},
+    )
+    user, att = s.records
+    assert user.tool_use_result == {"answers": {"q": "a"}}
+    assert att.data == {"type": "file", "path": "/p"}
+
+
+def test_blocks_without_ids_are_dropped(make_session):
+    s = make_session(
+        {"type": "user", "message": {"content": [{"type": "tool_result", "content": "x"}]}},
+        {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "name": "Write", "input": {}}]},
+        },
+    )
+    assert users(s)[0].tool_results == [] and assistants(s)[0].blocks == []
+
+
+def test_last_prompt(make_session):
+    s = make_session(
+        {"type": "last-prompt", "lastPrompt": "first"},
+        {"type": "last-prompt", "lastPrompt": "second"},
+    )
+    assert s.last_prompt == "second"
+
+
 def test_parser_does_not_modify_source(tmp_path):
     copy = tmp_path / "s.jsonl"
     copy.write_bytes(BASIC.read_bytes())

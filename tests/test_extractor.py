@@ -4,6 +4,7 @@ import pytest
 
 from session_doc.extractor import (
     LONG_ANSWER_CHARS,
+    STRUCTURED_MIN_CHARS,
     Item,
     extract_items,
     session_title,
@@ -58,7 +59,12 @@ def test_basic_session_prompts_and_noise():
 
 def test_sidechain_records_are_skipped(items):
     assert not by_title(items, "Sidechain")
-    assert not [i for i in items if "Side" in i.body and "# Side" in i.body]
+    assert not any("# Side" in i.body for i in items)
+
+
+def test_slash_commands_and_task_origins_are_not_prompts(items):
+    assert not [i for i in items if "<command-name>" in i.body]
+    assert not by_title(items, "Typed but from a task")
 
 
 # ------------------------------------------------------------------------- deliverables
@@ -113,6 +119,57 @@ def test_long_plain_answer_is_deliverable_but_medium_is_not(items):
     assert not any(i.body.startswith("## A") for i in inferred)
 
 
+def _answer(uuid: str, text: str) -> dict:
+    return {
+        "type": "assistant",
+        "uuid": uuid,
+        "timestamp": "2026-03-01T00:00:00Z",
+        "message": {"id": uuid, "content": [{"type": "text", "text": text}]},
+    }
+
+
+def test_long_answer_threshold_edges(make_session):
+    heads = "# H1\n\n# H2\n\n"
+    texts = {
+        "plain-below": "a" * (LONG_ANSWER_CHARS - 1),
+        "plain-at": "b" * LONG_ANSWER_CHARS,
+        "structured-below": heads + "c" * (STRUCTURED_MIN_CHARS - 1 - len(heads)),
+        "structured-at": heads + "d" * (STRUCTURED_MIN_CHARS - len(heads)),
+    }
+    session = make_session(*(_answer(k, v) for k, v in texts.items()))
+    got = [i.source_uuids for i in extract_items(session)]
+    assert got == [("plain-at",), ("structured-at",)]
+
+
+def test_plan_edit_without_write_uses_original_file(items):
+    plan = one(items, "Orig plan")
+    assert plan.body == "# Orig plan\n\nfinal one, final two\n"  # replace_all applied
+    assert plan.source_uuids == ("x-0049", "x-0051")
+
+
+def test_plan_multiedit_with_windows_paths(items):
+    plan = one(items, "Win plan v2")
+    assert plan.body == "# Win plan v2\n\n- a\n- b\n"
+    assert plan.source_uuids == ("x-0052", "x-0054", "x-0056")
+    assert not [i for i in items if i.body == "# Win plan\n\n- a\n"]  # no second deliverable
+
+
+def test_plan_exit_without_path(make_session):
+    att = {"type": "attachment", "uuid": "a1", "attachment": {"type": "plan_mode_exit"}}
+    (plan,) = extract_items(make_session(att))
+    assert plan.title == "Plan: plan" and "does not say where" in plan.body
+
+
+def test_plan_path_with_backtick_stays_in_code_span(make_session):
+    att = {
+        "type": "attachment",
+        "uuid": "a1",
+        "attachment": {"type": "plan_mode_exit", "planFilePath": "/plans/a`b.md"},
+    }
+    (plan,) = extract_items(make_session(att))
+    assert "``/plans/a`b.md``" in plan.body
+
+
 # ------------------------------------------------------------------------- decisions
 
 
@@ -128,10 +185,19 @@ def test_ask_user_question_in_basic_session():
     assert [i.title for i in d] == ["Which storage?: SQLite"]
 
 
+def test_answers_from_other_tools_are_not_decisions(items):
+    assert not [i for i in items if "Survey" in i.title or "Survey" in i.body]
+
+
 def test_default_english_phrase_makes_inferred_decision(items):
-    d = one(items, "Let")
+    d = one(items, "Let\u2019s go with")
     assert (d.kind, d.confidence) == ("decision", "inferred")
     assert "go with the second option" in d.body
+
+
+def test_decision_phrase_matches_across_line_breaks(items):
+    d = one(items, "Then we go")
+    assert (d.kind, d.confidence) == ("decision", "inferred")
 
 
 def test_custom_phrase_only_applies_when_passed():
@@ -167,7 +233,21 @@ def test_git_commit_multiple_m_flags(items):
 def test_failed_commit_and_other_git_commands_are_not_status(items):
     statuses = [i for i in items if i.kind == "status"]
     assert not by_title(items, "chore: fails")
-    assert len(statuses) == 3  # heredoc, two -m, and the unparsed --amend
+    # heredoc, two -m, unparsed --amend, `&& python -m`, `&& gh pr create`, `git -C`
+    assert len(statuses) == 6
+
+
+def test_commit_message_stops_at_the_end_of_the_git_command(items):
+    assert one(items, "fix: scope message").body == "fix: scope message"
+    assert one(items, "docs: pr flow").body == "docs: pr flow"
+
+
+def test_git_commit_inside_a_string_is_not_status(items):
+    assert not [i for i in items if i.kind == "status" and "remember" in i.body]
+
+
+def test_git_dash_c_and_long_message_option(items):
+    assert one(items, "chore: from elsewhere").kind == "status"
 
 
 def test_unparseable_commit_still_reported(items):
@@ -199,6 +279,11 @@ def test_session_title_falls_back_to_first_prompt(tmp_path):
     p.write_text("\n".join(lines) + "\n", encoding="utf-8")
     assert session_title(parse_session(p)) == "Please draft the rollout notes."
     assert session_title(parse_session(p), max_len=10) == "Please..."
+
+
+def test_session_title_falls_back_to_last_prompt(make_session):
+    session = make_session({"type": "last-prompt", "lastPrompt": "Resume the docs work."})
+    assert session_title(session) == "Resume the docs work."
 
 
 def test_session_title_for_empty_session(tmp_path):

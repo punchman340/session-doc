@@ -9,7 +9,8 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
+from functools import cached_property
 from pathlib import Path
 from typing import Any
 
@@ -62,14 +63,25 @@ class Record:
     agent_id: str | None = None
 
 
-# System-injected text that Claude Code wraps in a leading XML-like tag.
+# Text that Claude Code injects or echoes, wrapped in a leading XML-like tag. Slash
+# commands (`<command-name>`) and `!` shell input (`<bash-input>`) are echoes, not prompts.
 _SYSTEM_TAGS = (
     "<local-command-caveat>",
     "<local-command-stdout>",
     "<local-command-stderr>",
     "<task-notification>",
     "<system-reminder>",
+    "<command-name>",
+    "<command-message>",
+    "<command-args>",
+    "<bash-input>",
+    "<bash-stdout>",
+    "<bash-stderr>",
 )
+
+# Keys of `toolUseResult` the extractor needs. The rest (file contents from Read, command
+# output, patches) is dropped to keep memory low on large logs.
+_RESULT_KEYS = ("type", "filePath", "answers", "originalFile")
 
 
 @dataclass
@@ -84,7 +96,8 @@ class UserRecord(Record):
     permission_mode: str | None = None
     text_blocks: list[TextBlock] = field(default_factory=list)
     tool_results: list[ToolResultBlock] = field(default_factory=list)
-    tool_use_result: Any = None  # structured result of the tool call, shape varies per tool
+    # Structured result of the tool call, reduced to the keys in `_RESULT_KEYS`.
+    tool_use_result: dict[str, Any] = field(default_factory=dict)
 
     @property
     def text(self) -> str:
@@ -95,14 +108,14 @@ class UserRecord(Record):
         """True when the user typed this text (not a tool result or injected text)."""
         if self.is_sidechain or self.is_meta or self.is_compact_summary or self.tool_results:
             return False
-        if not self.text_blocks:
+        if not self.text_blocks or self.origin_kind not in (None, "human"):
+            return False
+        if self.text.lstrip().startswith(_SYSTEM_TAGS):
             return False
         if self.prompt_source is not None:
             return self.prompt_source == "typed"
         # Fallback for records without `promptSource`.
-        if self.origin_kind not in (None, "human") or self.prompt_id is None:
-            return False
-        return not self.text.lstrip().startswith(_SYSTEM_TAGS)
+        return self.prompt_id is not None
 
 
 @dataclass
@@ -134,8 +147,9 @@ class SystemRecord(Record):
 
 @dataclass
 class AttachmentRecord(Record):
-    """Harness-injected context. `data` is the raw `attachment` object; its `type`
-    (e.g. `plan_mode_exit`, `queued_command`) is exposed as `attachment_type`."""
+    """Harness-injected context. `data` holds the top-level scalar fields of the raw
+    `attachment` object (nested values are dropped); its `type` (e.g. `plan_mode_exit`,
+    `queued_command`) is exposed as `attachment_type`."""
 
     attachment_type: str | None = None
     data: dict[str, Any] = field(default_factory=dict)
@@ -169,35 +183,44 @@ AnyRecord = (
 
 @dataclass
 class Session:
+    """A parsed log file. Summary properties are computed once, on first access."""
+
     path: Path
     records: list[AnyRecord] = field(default_factory=list)
     skipped_lines: int = 0
 
-    @property
+    @cached_property
     def session_id(self) -> str | None:
         return next((r.session_id for r in self.records if r.session_id), None)
 
-    @property
+    @cached_property
     def cwd(self) -> str | None:
+        """The first working directory seen. It can change mid-session."""
         return next((r.cwd for r in self.records if r.cwd), None)
 
-    @property
+    @cached_property
     def git_branch(self) -> str | None:
         return next((r.git_branch for r in self.records if r.git_branch), None)
 
-    @property
+    @cached_property
     def start_time(self) -> datetime | None:
         return min((r.timestamp for r in self.records if r.timestamp), default=None)
 
-    @property
+    @cached_property
     def end_time(self) -> datetime | None:
         return max((r.timestamp for r in self.records if r.timestamp), default=None)
 
-    @property
+    @cached_property
     def title(self) -> str | None:
         """Latest AI-generated title, if any."""
         titles = [r.title for r in self.records if isinstance(r, AiTitleRecord) and r.title]
         return titles[-1] if titles else None
+
+    @cached_property
+    def last_prompt(self) -> str | None:
+        """Latest `last-prompt` text, if any."""
+        found = [r.prompt for r in self.records if isinstance(r, LastPromptRecord) and r.prompt]
+        return found[-1] if found else None
 
 
 # --------------------------------------------------------------------------- parsing
@@ -208,13 +231,15 @@ def _str(value: Any) -> str | None:
 
 
 def _parse_timestamp(value: Any) -> datetime | None:
+    """Parse ISO 8601. A value without an offset is taken as UTC, so all are comparable."""
     if not isinstance(value, str):
         return None
     try:
         # Python 3.10's fromisoformat does not accept a trailing "Z".
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        ts = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+    return ts if ts.tzinfo is not None else ts.replace(tzinfo=timezone.utc)
 
 
 def _common(raw: dict[str, Any], line_no: int) -> dict[str, Any]:
@@ -238,6 +263,18 @@ def _message(raw: dict[str, Any]) -> dict[str, Any]:
     return msg if isinstance(msg, dict) else {}
 
 
+def _tool_use_result(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return {k: value[k] for k in _RESULT_KEYS if k in value}
+
+
+def _scalars(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return {k: v for k, v in value.items() if v is None or isinstance(v, (str, int, float))}
+
+
 def _result_text(content: Any) -> str:
     if isinstance(content, str):
         return content
@@ -257,7 +294,7 @@ def _parse_user(raw: dict[str, Any], line_no: int) -> UserRecord:
         prompt_id=_str(raw.get("promptId")),
         prompt_source=_str(raw.get("promptSource")),
         permission_mode=_str(raw.get("permissionMode")),
-        tool_use_result=raw.get("toolUseResult"),
+        tool_use_result=_tool_use_result(raw.get("toolUseResult")),
     )
     origin = raw.get("origin")
     if isinstance(origin, dict):
@@ -271,10 +308,10 @@ def _parse_user(raw: dict[str, Any], line_no: int) -> UserRecord:
                 continue
             if b.get("type") == "text" and isinstance(b.get("text"), str):
                 rec.text_blocks.append(TextBlock(b["text"]))
-            elif b.get("type") == "tool_result":
+            elif b.get("type") == "tool_result" and _str(b.get("tool_use_id")):
                 rec.tool_results.append(
                     ToolResultBlock(
-                        tool_use_id=_str(b.get("tool_use_id")) or "",
+                        tool_use_id=b["tool_use_id"],
                         text=_result_text(b.get("content")),
                         is_error=b.get("is_error") is True,
                     )
@@ -300,11 +337,11 @@ def _parse_assistant(raw: dict[str, Any], line_no: int) -> AssistantRecord:
             rec.blocks.append(TextBlock(b["text"]))
         elif kind == "thinking" and isinstance(b.get("thinking"), str):
             rec.blocks.append(ThinkingBlock(b["thinking"]))
-        elif kind == "tool_use":
+        elif kind == "tool_use" and _str(b.get("id")):
             inp = b.get("input")
             rec.blocks.append(
                 ToolUseBlock(
-                    id=_str(b.get("id")) or "",
+                    id=b["id"],
                     name=_str(b.get("name")) or "",
                     input=inp if isinstance(inp, dict) else {},
                 )
@@ -326,8 +363,7 @@ def _parse_record(raw: dict[str, Any], line_no: int) -> AnyRecord:
             is_meta=raw.get("isMeta") is True,
         )
     if kind == "attachment":
-        att = raw.get("attachment")
-        att = att if isinstance(att, dict) else {}
+        att = _scalars(raw.get("attachment"))
         return AttachmentRecord(
             **_common(raw, line_no), attachment_type=_str(att.get("type")), data=att
         )
@@ -350,12 +386,13 @@ def _iter(path: Path, counter: list[int] | None) -> Iterator[AnyRecord]:
                 continue
             try:
                 raw = json.loads(line)
-                if not isinstance(raw, dict) or not isinstance(raw.get("type"), str):
-                    raise ValueError("not a record")
-                yield _parse_record(raw, line_no)
-            except (ValueError, TypeError, KeyError):
+            except ValueError:
+                raw = None
+            if not isinstance(raw, dict) or not isinstance(raw.get("type"), str):
                 if counter is not None:
                     counter[0] += 1
+                continue
+            yield _parse_record(raw, line_no)
 
 
 def parse_session(path: str | Path) -> Session:
