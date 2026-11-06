@@ -218,3 +218,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# session-doc: never commit real session logs or generated output.
+*.jsonl
+!tests/fixtures/*.jsonl
+/session-doc/

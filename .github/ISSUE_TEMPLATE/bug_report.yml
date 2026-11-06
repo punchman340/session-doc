@@ -5,9 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        ## Do NOT paste real session logs
+        ## Do not paste real session logs
         Session logs (JSONL) can contain secrets, tokens, file paths, and private code.
-        Please provide a **minimal, anonymized snippet** that reproduces the problem instead.
+        Please provide a minimal, anonymized snippet that reproduces the problem instead.
   - type: textarea
     id: what-happened
     attributes:
@@ -43,6 +43,6 @@ body:
     id: version
     attributes:
       label: session-doc version
-      description: Output of `uv run session-doc --version`
+      description: Output of `session-doc --version` (or `uvx session-doc --version`)
     validations:
       required: true
