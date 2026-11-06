@@ -2,7 +2,7 @@
 
 Turn coding-agent session logs into searchable HTML docs.
 
-> **Status: early scaffold.** The CLI runs, but `generate` is not implemented yet.
+> **Status:** the parser and extractor work; `generate` and the HTML output do not exist yet.
 
 ## Why
 
@@ -25,10 +25,10 @@ searchable HTML site from them, organized by project instead of by scroll positi
 
 See [docs/DESIGN.md](docs/DESIGN.md) for the full design.
 
-### Status
+### Progress
 
-- [ ] Parser
-- [ ] Extractor
+- [x] Parser
+- [x] Extractor
 - [ ] HTML renderer
 - [ ] Search
 - [ ] Hook / plugin
@@ -47,10 +47,17 @@ uvx session-doc generate
 uv sync
 uv run pytest
 uv run ruff check . && uv run ruff format .
+uv run session-doc --help
 ```
 
 See [AGENTS.md](AGENTS.md) for contributor and agent guidelines and
 [docs/DECISIONS.md](docs/DECISIONS.md) for design decisions.
+
+Suggested roles when working with coding agents:
+
+- Claude Code: core logic, multi-file changes, tests, refactors.
+- Copilot: inline edits, small fixes, PR review.
+- Antigravity: HTML/CSS templates and visual checks in the browser.
 
 ## License
 

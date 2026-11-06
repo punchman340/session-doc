@@ -1,74 +1,54 @@
 # Decisions
 
-Short, append-only log. Newest first. Format: date, decision, why.
+Newest first. Add a new entry instead of rewriting an old one. Format: date, decision,
+why. Observed log structure lives in `docs/LOG_FORMAT.md`.
+
+## 2026-11-07 (review)
+
+- **Config file lives outside the output dir.** `~/.config/session-doc/config.json` on
+  Linux and macOS, `%APPDATA%\session-doc\config.json` on Windows. The output dir can be
+  wiped and regenerated, and writing it can be refused inside a git work tree; neither
+  should touch user settings. This replaces the `~/session-doc/config.json` path below.
+- **Timestamps without an offset are read as UTC.** Mixing them with `Z` timestamps
+  crashed sorting.
+- **`git commit` is matched per command segment.** Heredoc bodies are set aside, then the
+  command is split at top-level `;`, `&`, `|`, and newlines. Only a segment that starts
+  with `git ... commit` counts, and only its own `-m` values (or the heredoc one of them
+  refers to) form the message. Before, `&& python -m pytest` and a later `gh pr create`
+  heredoc leaked into the message, and `echo "... git commit"` counted as a commit.
+- **The parser keeps only what the extractor uses from large payloads.** `toolUseResult`
+  is cut to `type`, `filePath`, `answers`, and `originalFile`; attachments keep top-level
+  scalar fields only. Read results and command output made memory grow with log size.
+- **Echoed commands and non-human origins are never typed prompts.** Text starting with
+  `<command-*>` or `<bash-*>` tags is skipped, and so is any record whose `origin.kind`
+  is not `human`, even with `promptSource == "typed"`. In the sample, 2 slash-command
+  records had a `promptId` and no `promptSource`, so the fallback took them as prompts.
+- **Default decision phrases are `decided` and `go with`.** `let's go with` was redundant.
+  The defaults match none of the 334 typed prompts in the sample, because they are
+  mostly not in English; user config phrases do the real work. Phrases match across any
+  whitespace.
+- **`AskUserQuestion` answers need the matching tool call.** An `answers` field from any
+  other tool is not a decision.
+- **`MultiEdit` on a plan file is replayed like `Edit`.**
+- **Log format findings moved to `docs/LOG_FORMAT.md`.** This file keeps decisions only.
 
 ## 2026-11-07
 
-- **Extractor rules and thresholds (checked on the same 88-file sample, counts only).**
-  - Long answer: assistant text merged per `message.id`. Of 1423 such messages the median is
-    89 characters, p75 is 263, p90 is 2329. Chosen threshold: **1500 characters** (about 15%
-    of messages). Messages with 2+ headings, a table, or a checklist qualify from **300
-    characters**; in the sample every structured message was already above 500, so the floor
-    only guards against tiny answers. Headings inside code fences do not count.
-  - Plan body: the sample has one `plan_mode_exit` and **no** `Write`, `Edit`, or any other
-    record in the log writes its plan file. So the plan body is usually not recoverable from
-    the log; the item then says so instead of reading the file. When a `Write` does exist,
-    the body is rebuilt from it, with later `Edit` calls replayed (using `originalFile` from
-    the edit result as a base when no `Write` was seen). The `Write` to a plan file is not
-    emitted as a second deliverable.
-  - `Write` input keys in the sample: `file_path` 450, `content` 453, `path` 4, `file_text` 1.
-    All four are accepted.
-  - `git commit` appears 3 times in the sample, always as `git add ... && git commit -m
-    "$(cat <<'EOF' ... EOF)"`. The extractor also handles `-m 'x'`, `--message`, and several
-    `-m` flags; unparseable commands (`--amend --no-edit`) still yield an item titled
-    `git commit`. Only `Bash` calls are inspected.
-  - Decision phrases come from user config, not the repo. The repo ships English defaults
-    ("let's go with", "decided", "go with"); the extractor takes extra phrases as a
-    parameter, and the CLI will later load them from `~/session-doc/config.json`
-    (`"decision_phrases": [...]`). This keeps the repository English-only.
-
-- **Parser checked against real Claude Code logs (88 files, version 2.1.x, structure only).**
-  - Top-level record types: `user`, `assistant`, `system`, `attachment` (modeled);
-    `ai-title`, `last-prompt` (modeled, for titles); `mode`, `permission-mode`,
-    `session-owner`, `atis-latch`, `bridge-session`, `file-history-snapshot`,
-    `file-history-delta`, `queue-operation`, `cost-state`, `tools-used`, `api-request`,
-    `api-request-shape`, `api-request-blob` (kept as `OtherRecord`, no payload).
-  - Each line is one record; no wrapper. `sessionId` equals the file name. Every file starts
-    with a `mode` record, so metadata cannot be read from line 1.
-  - Where things live: `cwd`, `gitBranch`, `version`, `sessionId`, `uuid`, `parentUuid`,
-    `timestamp` (ISO 8601 with `Z`) sit on the top level of `user`, `assistant`, `system`,
-    and `attachment` records, not on a header record. `cwd` and `gitBranch` can change
-    mid-session, so the parser reads them per record.
-  - Assistant messages are split: one `assistant` record per content block (thinking, text,
-    or tool_use), all sharing `message.id`. Tool results arrive as `user` records whose
-    content is `tool_result` blocks, plus a top-level `toolUseResult` with a tool-specific
-    shape.
-  - Subagent logs live in a nested `<session-id>/subagents/agent-*.jsonl` and have
-    `isSidechain: true`. The parser reads them as ordinary files; the future scanner must
-    decide whether to list them.
-  - User-typed text: `promptSource == "typed"` (with `origin.kind == "human"`) is the
-    reliable signal. `content` is a plain string or a list of `text` blocks. Not typed:
-    `tool_result` records, `isMeta`, `isCompactSummary`, `promptSource` of `system` or
-    `queued`, `origin.kind == "task-notification"`, and strings starting with
-    `<local-command-caveat>`, `<task-notification>`, and similar tags. Pasted text is wrapped
-    in `<pasted_content>` inside a typed prompt. Records without `promptSource` fall back to
-    a `promptId` plus tag check (rare in the sample, so unverified).
-  - **Wrong or unverified in DESIGN.md section 5:**
-    - `ExitPlanMode` never appears as a `tool_use`. Plan mode shows up as `permission-mode`
-      records (`plan`) and `attachment` records of type `plan_mode` and `plan_mode_exit`,
-      the latter carrying `planFilePath`. The plan text lives in that file, not in the log.
-    - `TodoWrite`, `TaskCreate`, `TaskUpdate` never appear in the sample. Background task
-      state appears as `attachment` type `task_status`. Status rules need other evidence,
-      or more logs, before they can be written.
-    - `AskUserQuestion` matches: input `questions[]` (`question`, `header`, `multiSelect`,
-      `options[]`), and the answer is in the `user` record's `toolUseResult.answers`
-      (question text -> chosen label).
-    - `Write` matches, but the path key is `file_path`; a few calls use `path` or
-      `file_text`. The parser keeps the raw input dict, so the extractor must accept
-      both.
-    - Tool names are not limited to the built-ins: MCP tools appear as `mcp__<server>__<tool>`.
-  - The sample comes from one user's recent logs (all 2.1.x). Older formats are untested.
-
+- **Extractor thresholds (88-file sample, counts only).** Assistant text is merged per
+  `message.id`. Of 1423 such messages the median is 89 characters, p75 263, p90 2329.
+  A long answer is 1500 characters or more (about 15% of messages). Messages with 2+
+  headings, a table, or a checklist qualify from 300 characters; every structured
+  message in the sample was already above 500, so the floor only guards against tiny
+  answers. Headings inside code fences do not count.
+- **Plan bodies come from the log only.** The body is rebuilt from a `Write` to the plan
+  file, with later edits replayed (using `originalFile` from the edit result when no
+  `Write` was seen). Without that, the item says the body is not in the log; the file is
+  never read. The `Write` to a plan file is not a second deliverable.
+- **Decision phrases come from user config, not the repo.** The repo ships English
+  defaults; the extractor takes extra phrases as a parameter. This keeps the repository
+  English-only.
+- **Parser checked against real Claude Code logs.** Findings, including where DESIGN.md
+  section 5 was wrong, are in `docs/LOG_FORMAT.md`.
 - **Default output dir is `~/session-doc/`.** Override with `--out`. Refuse to write inside
   a git work tree unless explicitly forced, because logs hold paths and secrets that must
   not end up in a repository by accident.
@@ -79,9 +59,8 @@ Short, append-only log. Newest first. Format: date, decision, why.
   is loaded at a time.
 - **`generate` is idempotent and incremental.** Content hashes in `state.json` skip
   unchanged sessions. A Claude Code session-end hook will call the same command later.
-- **Local only: no network, no sharing features.** Logs can contain secrets, so there are
-  no telemetry, update checks, external requests in generated HTML, or publish/export
-  features.
+- **Local only.** Logs can contain secrets, so nothing leaves the machine and there are no
+  publish or export features.
 - **Archive raw source logs by default.** Copies go under `raw/` in the output dir, so docs
   survive the agent pruning old logs. Can be disabled. Source logs are never modified.
 
@@ -95,7 +74,7 @@ Short, append-only log. Newest first. Format: date, decision, why.
   be used from the terminal, a Claude Code hook, or any other agent.
 - **Python with uv.** `uvx session-doc` gives one-line use, and similar tools in this space
   are Python. Stdlib first; no runtime dependencies until one is justified here.
-- **`src/` layout, hatchling, ruff, pytest.** Standard modern Python packaging.
+- **`src/` layout, hatchling, ruff, pytest.**
 - **`AGENTS.md` is the single source of agent instructions.** Copilot and Antigravity read it
   directly; `CLAUDE.md` imports it with `@AGENTS.md`. Tool-specific files only when needed.
 - **English everywhere in the repo.** The tool is meant to be usable by anyone.
