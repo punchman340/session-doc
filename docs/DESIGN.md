@@ -1,7 +1,8 @@
 # Design
 
-Status: draft. Nothing here has been verified against real session logs yet; sections
-marked *hypothesis* must be checked while writing the parser.
+Status: draft. Section 5 was checked against real Claude Code logs while writing the
+parser; findings are in `docs/DECISIONS.md` (2026-11-07). Rows marked *unverified* below
+could not be confirmed.
 
 ## 1. Goals and non-goals
 
@@ -56,14 +57,14 @@ Filtering by kind comes later. Chronological order is the only ordering for the 
 
 Pipeline: log file -> records -> items -> pages and search index.
 
-## 5. Extraction rules (hypothesis)
+## 5. Extraction rules
 
 | Kind | Explicit signals | Inferred signals |
 |---|---|---|
-| Prompt | Text the user typed (not tool results, not system-injected text) | none |
-| Deliverable | Plan-mode plan (`ExitPlanMode`), Markdown files created with `Write` | Long assistant answers, answers with several headings, tables, or checklists |
-| Decision | Answers to `AskUserQuestion`, plan approval | Phrases such as "let's go with", "decided", Korean equivalents (e.g. "~로 하자", "결정") |
-| Status | Task and todo tool calls (`TodoWrite`, `TaskCreate`, `TaskUpdate`), `git commit` | none |
+| Prompt | `user` records with `promptSource == "typed"` (not tool results, not system-injected text) | none |
+| Deliverable | Plan-mode exit (`plan_mode_exit` attachment; the plan is in `planFilePath`, `ExitPlanMode` was not observed), Markdown files created with `Write` (`file_path`) | Long assistant answers, answers with several headings, tables, or checklists |
+| Decision | Answers to `AskUserQuestion` (`toolUseResult.answers`), plan approval | Phrases such as "let's go with", "decided", Korean equivalents (e.g. "~로 하자", "결정") |
+| Status | `git commit` in Bash; *unverified:* `TodoWrite`, `TaskCreate`, `TaskUpdate` (not observed in sample logs) | none |
 
 Thresholds (e.g. minimum length of a "long answer") are tuned against real logs and
 recorded in `docs/DECISIONS.md`. Every rule has a fixture and a test.

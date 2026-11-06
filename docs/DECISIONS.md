@@ -4,6 +4,48 @@ Short, append-only log. Newest first. Format: date, decision, why.
 
 ## 2026-11-07
 
+- **Parser checked against real Claude Code logs (88 files, version 2.1.x, structure only).**
+  - Top-level record types: `user`, `assistant`, `system`, `attachment` (modeled);
+    `ai-title`, `last-prompt` (modeled, for titles); `mode`, `permission-mode`,
+    `session-owner`, `atis-latch`, `bridge-session`, `file-history-snapshot`,
+    `file-history-delta`, `queue-operation`, `cost-state`, `tools-used`, `api-request`,
+    `api-request-shape`, `api-request-blob` (kept as `OtherRecord`, no payload).
+  - Each line is one record; no wrapper. `sessionId` equals the file name. Every file starts
+    with a `mode` record, so metadata cannot be read from line 1.
+  - Where things live: `cwd`, `gitBranch`, `version`, `sessionId`, `uuid`, `parentUuid`,
+    `timestamp` (ISO 8601 with `Z`) sit on the top level of `user`, `assistant`, `system`,
+    and `attachment` records, not on a header record. `cwd` and `gitBranch` can change
+    mid-session, so the parser reads them per record.
+  - Assistant messages are split: one `assistant` record per content block (thinking, text,
+    or tool_use), all sharing `message.id`. Tool results arrive as `user` records whose
+    content is `tool_result` blocks, plus a top-level `toolUseResult` with a tool-specific
+    shape.
+  - Subagent logs live in a nested `<session-id>/subagents/agent-*.jsonl` and have
+    `isSidechain: true`. The parser reads them as ordinary files; the future scanner must
+    decide whether to list them.
+  - User-typed text: `promptSource == "typed"` (with `origin.kind == "human"`) is the
+    reliable signal. `content` is a plain string or a list of `text` blocks. Not typed:
+    `tool_result` records, `isMeta`, `isCompactSummary`, `promptSource` of `system` or
+    `queued`, `origin.kind == "task-notification"`, and strings starting with
+    `<local-command-caveat>`, `<task-notification>`, and similar tags. Pasted text is wrapped
+    in `<pasted_content>` inside a typed prompt. Records without `promptSource` fall back to
+    a `promptId` plus tag check (rare in the sample, so unverified).
+  - **Wrong or unverified in DESIGN.md section 5:**
+    - `ExitPlanMode` never appears as a `tool_use`. Plan mode shows up as `permission-mode`
+      records (`plan`) and `attachment` records of type `plan_mode` and `plan_mode_exit`,
+      the latter carrying `planFilePath`. The plan text lives in that file, not in the log.
+    - `TodoWrite`, `TaskCreate`, `TaskUpdate` never appear in the sample. Background task
+      state appears as `attachment` type `task_status`. Status rules need other evidence,
+      or more logs, before they can be written.
+    - `AskUserQuestion` matches: input `questions[]` (`question`, `header`, `multiSelect`,
+      `options[]`), and the answer is in the `user` record's `toolUseResult.answers`
+      (question text -> chosen label).
+    - `Write` matches, but the path key is `file_path`; a few calls use `path` or
+      `file_text`. The parser keeps the raw input dict, so the extractor must accept
+      both.
+    - Tool names are not limited to the built-ins: MCP tools appear as `mcp__<server>__<tool>`.
+  - The sample comes from one user's recent logs (all 2.1.x). Older formats are untested.
+
 - **Default output dir is `~/session-doc/`.** Override with `--out`. Refuse to write inside
   a git work tree unless explicitly forced, because logs hold paths and secrets that must
   not end up in a repository by accident.
