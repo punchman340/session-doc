@@ -38,6 +38,8 @@ from session_doc.render import ProjectInfo, SessionInfo
 STATE_FORMAT = 1
 STATE_FILE = "state.json"
 DATA_FILE = "search-index.js"
+# Files the `hook` command keeps in the output dir. They do not make a directory "foreign".
+HOOK_FILES = frozenset({"hook.log", ".hook.lock"})
 
 
 class GenerateError(Exception):
@@ -315,6 +317,54 @@ def generate(
     return _Run(out, archive=archive, phrases=tuple(decision_phrases)).execute(source)
 
 
+def update_session(
+    transcript: Path,
+    out: Path,
+    *,
+    archive: bool = True,
+    allow_in_git: bool = False,
+    decision_phrases: Iterable[str] = (),
+) -> str:
+    """Archive and render one session log, then refresh its project's index and data file.
+
+    The same checks as `generate` apply to `out`. Returns "new", "changed", or "skipped"
+    (the log is unchanged). If the session-doc version, output format, or decision phrases
+    changed since the last full run, the old fingerprint is kept in `state.json`, so the
+    next `generate` still renders every other session again.
+    """
+    transcript = Path(transcript).expanduser().resolve()
+    out = Path(out).expanduser().resolve()
+    if not transcript.is_file():
+        raise GenerateError(f"session log not found: {transcript}")
+    if transcript.is_relative_to(out):
+        raise GenerateError(f"the session log ({transcript}) is inside the output dir ({out})")
+    check_out_dir(out, allow_in_git)
+    run = _Run(out, archive=archive, phrases=tuple(decision_phrases))
+    return run.execute_one(transcript)
+
+
+def is_foreign_dir(out: Path) -> bool:
+    """True if `out` is a non-empty directory that session-doc did not create."""
+    if (out / STATE_FILE).exists() or not out.is_dir():
+        return False
+    return any(p.name not in HOOK_FILES for p in out.iterdir())
+
+
+def check_out_dir(out: Path, allow_in_git: bool) -> None:
+    """Raise `GenerateError` if `out` may not be written to."""
+    if out.exists() and not out.is_dir():
+        raise GenerateError(f"output path exists and is not a directory: {out}")
+    if not allow_in_git:
+        repo = find_git_work_tree(out)
+        if repo is not None:
+            raise GitWorkTreeError(out, repo)
+    if is_foreign_dir(out):
+        raise GenerateError(
+            f"{out} is not empty and has no {STATE_FILE}, so session-doc did "
+            "not create it. Choose an empty or new directory."
+        )
+
+
 def _check_paths(source: Path, out: Path, allow_in_git: bool) -> None:
     if not source.is_dir():
         raise GenerateError(f"source directory not found: {source}")
@@ -343,11 +393,12 @@ class _Run:
         # projects whose index page and data file must be written again
         self.touched: set[str] = set()
 
-    def execute(self, source: Path) -> GenerateResult:
+    def _open_state(self) -> tuple[dict[str, Any], dict[str, Any], bool]:
+        """Load or create `state.json`. Returns (fingerprint, old fingerprint, is_new)."""
         fingerprint = _fingerprint(self.phrases)
         loaded = _load_state(self.out)
         if loaded is None:
-            if self.out.is_dir() and any(self.out.iterdir()):
+            if is_foreign_dir(self.out):
                 raise GenerateError(
                     f"{self.out} is not empty and has no {STATE_FILE}, so session-doc did "
                     "not create it. Choose an empty or new directory."
@@ -359,6 +410,30 @@ class _Run:
             old_fingerprint, self.sessions = loaded
         for key, entry in self.sessions.items():
             self.slugs.setdefault(entry.project, {})[entry.slug] = key
+        return fingerprint, old_fingerprint, loaded is None
+
+    def execute_one(self, path: Path) -> str:
+        fingerprint, old_fingerprint, is_new = self._open_state()
+        key = path.as_posix()
+        entry = self.sessions.get(key)
+        digest = _sha256_file(path)
+        if entry is None:
+            status = "new"
+        elif entry.sha256 != digest:
+            status = "changed"
+        else:
+            status = "skipped"
+        if status != "skipped":
+            self._render_source(key, path, digest)
+            self._write_projects()
+            self._write_shared(False)
+        # Other sessions are not re-rendered here, so a changed fingerprint must survive.
+        keep = fingerprint if is_new or old_fingerprint == fingerprint else old_fingerprint
+        _write_if_changed(self.out / STATE_FILE, _state_json(keep, self.sessions), durable=True)
+        return status
+
+    def execute(self, source: Path) -> GenerateResult:
+        fingerprint, old_fingerprint, _ = self._open_state()
         full = old_fingerprint != fingerprint
 
         counts: Counter[str] = Counter()

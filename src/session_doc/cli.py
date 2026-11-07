@@ -16,6 +16,7 @@ from session_doc.generate import (
     default_source_dir,
     generate,
 )
+from session_doc.hook import print_config_text, run_hook
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -51,7 +52,44 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="allow an output dir inside a git work tree",
     )
+    hook = subparsers.add_parser(
+        "hook",
+        help="Update the docs for one session (Claude Code SessionEnd hook).",
+        description="Read a SessionEnd hook input (JSON) from stdin and update the docs for "
+        "that session only. Always exits 0 and prints nothing on success; errors are "
+        "appended to <out>/hook.log.",
+    )
+    hook.add_argument(
+        "--out", type=Path, metavar="DIR", help="output directory (default: ~/session-doc)"
+    )
+    hook.add_argument(
+        "--allow-in-git",
+        action="store_true",
+        help="allow an output dir inside a git work tree",
+    )
+    hook.add_argument(
+        "--print-config",
+        action="store_true",
+        help="print the settings.json snippet that registers this hook, then exit",
+    )
     return parser
+
+
+def _hook(args: argparse.Namespace) -> int:
+    if args.print_config:
+        sys.stdout.write(print_config_text())
+        return 0
+    try:
+        raw = sys.stdin.buffer.read()
+    except Exception:
+        raw = b""
+    run_hook(
+        raw,
+        args.out if args.out is not None else default_out_dir(),
+        config_path=default_config_path(),
+        allow_in_git=args.allow_in_git,
+    )
+    return 0
 
 
 def _generate(args: argparse.Namespace) -> int:
@@ -85,5 +123,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "generate":
         return _generate(args)
+    if args.command == "hook":
+        return _hook(args)
     parser.print_help()
     return 0
