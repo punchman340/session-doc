@@ -2,7 +2,7 @@
 
 Status: draft. Section 5 was checked against real Claude Code logs while writing the
 parser and extractor; what the logs contain is in `docs/LOG_FORMAT.md`. Sections 3, 6,
-and 7 describe the renderer and `generate` as built.
+and 7 describe the renderer, `generate`, and `hook` as built.
 
 ## 1. Goals and non-goals
 
@@ -154,7 +154,38 @@ rewritten, so a run without changes writes nothing. If the session-doc version, 
 output format, or the decision phrases change, every session is rendered again, from
 `raw/` when its log is gone.
 
-Today it is run by hand. A later Claude Code hook (session end) calls the same command.
+### Hook
+
+`session-doc hook [--out DIR] [--allow-in-git]` is the Claude Code `SessionEnd` hook. It
+runs steps 3 to 7 for one log instead of a scan:
+
+1. Read the hook input JSON from stdin and take `transcript_path`. Input that is not a
+   JSON object with a string `transcript_path` is an error. A path with a `subagents`
+   directory, a missing file, or an empty file is ignored: nothing is written, not even
+   the output dir.
+2. Apply the same refusals as `generate` to the output dir (git work tree, not created
+   by session-doc, not a directory). A refused dir is never written to, so the reason
+   goes to stderr instead of the log. Read the config; invalid JSON is an error.
+3. Take `<out>/.hook.lock`, created exclusively. If it is held, retry for up to 10
+   seconds, then skip the update and log that. A lock older than 120 seconds is stale
+   and is replaced.
+4. Run the `generate` steps for that log only: skip if its sha256 is unchanged,
+   otherwise archive, render, rewrite its project's `index.html` and `search-index.js`
+   (other sessions' search docs are carried over), update the top-level index, and write
+   `state.json` last. The state key is the resolved transcript path, as in `generate`.
+   If the fingerprint (version, format, decision phrases) differs from `state.json`, the
+   old one is kept so the next `generate` renders every other session again.
+5. Release the lock.
+
+It always exits 0 and prints nothing on success. Failures are appended to
+`<out>/hook.log` as `<UTC timestamp> <stage>: <message>`, where the stage is `input`,
+`check`, `config`, `lock`, `update`, or `skipped`. The message is the exception type,
+plus its text for file-system, config, and session-doc errors; any other exception logs
+only its type. Session content is never logged.
+
+`session-doc hook --print-config` prints the `settings.json` snippet (a `SessionEnd`
+command hook running `session-doc hook`, timeout 30) and exits. session-doc never edits
+the user's settings file.
 
 ## 7. Search
 

@@ -2,7 +2,7 @@
 
 Turn coding-agent session logs into searchable HTML docs.
 
-> **Status:** `generate` works for Claude Code logs. The session-end hook does not exist yet.
+> **Status:** `generate` works for Claude Code logs. `session-doc hook` updates one session when it ends; the plugin does not exist yet.
 
 ## Why
 
@@ -31,7 +31,8 @@ See [docs/DESIGN.md](docs/DESIGN.md) for the full design.
 - [x] Extractor
 - [x] HTML renderer
 - [x] Search
-- [ ] Hook / plugin
+- [x] SessionEnd hook
+- [ ] Plugin
 
 ## Usage
 
@@ -67,6 +68,49 @@ Optional: `~/.config/session-doc/config.json` on Linux and macOS,
 A typed prompt that contains one of these phrases (whole words, any case) is listed as an
 inferred decision. The built-in phrases are `decided` and `go with`. After a change to
 the phrases, the next run renders every session again.
+
+### Hook setup
+
+`session-doc hook` updates the docs for the one session that just ended, so you do not
+have to run `generate` by hand. Print the snippet and merge it into
+`~/.claude/settings.json` yourself (session-doc never edits that file):
+
+```bash
+session-doc hook --print-config
+```
+
+```json
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {"type": "command", "command": "session-doc hook", "timeout": 30}
+        ]
+      }
+    ]
+  }
+}
+```
+
+`session-doc` must be on the `PATH` that Claude Code uses. From a clone, use a command
+such as `uv run --project /path/to/session-doc session-doc hook` instead. `hook` takes
+`--out DIR` and `--allow-in-git` like `generate`, and reads the same config file.
+
+- It reads the hook input JSON from stdin and processes only `transcript_path`: it
+  archives that log, renders its page, and updates its project's index and
+  `search-index.js`. Subagent transcripts and missing or empty files are ignored.
+- It always exits 0 and prints nothing on success. Errors go to `<out>/hook.log`, one
+  line each with a UTC timestamp, the stage, and the error; session text is never logged.
+  If the output dir is refused (inside a git work tree, or not created by session-doc),
+  nothing is written there and the reason goes to stderr.
+- Two sessions ending at once are serialized with `<out>/.hook.lock`. A session waits up
+  to 10 seconds, then skips its update and logs that; the next `generate` or hook run
+  picks it up.
+- If session-doc or the config changed since the last `generate`, the hook updates only
+  its session; run `generate` to render the rest again.
+- On the maintainer's machine (87 logs, 83 MB), one session took about 0.8 s (0.9 s for
+  the largest, 5 MB), mostly Python startup and imports.
 
 ## Development
 

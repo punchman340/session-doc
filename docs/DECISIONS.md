@@ -3,6 +3,38 @@
 Newest first. Add a new entry instead of rewriting an old one. Format: date, decision,
 why. Observed log structure lives in `docs/LOG_FORMAT.md`.
 
+## 2026-11-07 (hook)
+
+- **`session-doc hook` is a subcommand of the CLI, backed by `hook.py` in the core.** The
+  registered command is plain `session-doc hook`. `cli.py` only reads stdin and calls
+  `run_hook`. `generate.update_session` renders one log with the same `_Run` code as
+  `generate`, so both paths produce identical files.
+- **The hook never fails the session.** Every exception is caught, the exit code is
+  always 0, and nothing is printed on success. Errors are one line each in
+  `<out>/hook.log`: timestamp, stage, exception type, and the message only for
+  OS, config, and session-doc errors. Other exceptions log just their type, so session
+  text cannot leak into the log.
+- **A refused output dir gets no log.** If the dir is inside a git work tree or was not
+  created by session-doc, writing `hook.log` there would break the rule the check
+  exists for, so that one case goes to stderr (exit code still 0). `hook.log` and
+  `.hook.lock` do not make a directory count as "not created by session-doc".
+- **Lock: an exclusively created `<out>/.hook.lock`.** Portable with the standard
+  library, no `fcntl`/`msvcrt` split. Wait up to 10 seconds, then skip and log; the
+  hook timeout is 30. A lock older than 120 seconds is treated as left by a crashed
+  process. A skipped session is not lost: its log changes the hash, so the next
+  `generate` or hook run picks it up.
+- **The hook keeps an out-of-date fingerprint.** It renders one session, so it cannot
+  claim the others match the new version or phrases. It leaves the old fingerprint in
+  `state.json`; the next `generate` re-renders everything. A fresh output dir takes the
+  current fingerprint.
+- **`--out` and `--allow-in-git` on `hook`.** New flags on a new subcommand, with the
+  same meaning as on `generate`; a hook whose output dir is not the default needs them.
+  `--print-config` prints the default command only.
+- **Timing, checked locally (counts and times only):** 87 logs, 82 MB. A full `generate`
+  took 6.4 s. The hook took 0.7 to 0.9 s per session (median-size log 0.8 s, largest 5 MB
+  log 0.9 s) and 0.6 s when the log was unchanged. Interpreter startup and imports are
+  most of that. Well inside the 30 second timeout.
+
 ## 2026-11-07 (renderer)
 
 - **Runtime dependencies: markdown-it-py and Jinja2, nothing else.** Approved by the

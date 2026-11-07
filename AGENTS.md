@@ -19,6 +19,7 @@ uv run ruff check . && uv run ruff format .      # lint + format
 uv run ruff format --check .                     # format check, as CI runs it
 uv run session-doc --help                        # run the CLI
 uv run session-doc generate --source tests/fixtures --out DIR   # render the fixtures
+uv run session-doc hook --print-config           # SessionEnd hook settings snippet
 ```
 
 Pick a `DIR` outside the repo. `generate` refuses an output dir inside a git work tree
@@ -36,10 +37,14 @@ unless `--allow-in-git` is passed.
 
 Keep three layers separate:
 
-1. Core (`parser`, `extractor`, `render`, `generate`, `config`) has no CLI or plugin
+1. Core (`parser`, `extractor`, `render`, `generate`, `hook`, `config`) has no CLI or plugin
    imports.
 2. `cli.py` only parses arguments and calls the core.
 3. The Claude Code plugin (later) only shells out to the CLI.
+
+`hook` is the SessionEnd hook: it must always exit 0, print nothing on success, and log
+errors (never log content) to `<out>/hook.log`. Never edit the user's `settings.json`
+from code.
 
 Pipeline: JSONL -> parser (typed records) -> extractor (items) -> renderer (pages and
 per-project data file). `generate.py` scans, archives, tracks state, and writes files.
